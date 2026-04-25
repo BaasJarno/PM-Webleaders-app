@@ -1,9 +1,11 @@
 const path = require("path");
 const fs = require("fs");
+const { pathToFileURL } = require("url");
 const pkg = require(path.join(__dirname, "package.json"));
 const {
   app,
   BrowserWindow,
+  screen,
   session,
   Menu,
   globalShortcut,
@@ -44,6 +46,103 @@ function createAppIcon() {
 }
 
 const APP_URL = "https://pm.webleaders.nl/";
+
+function getWindowStateFilePath() {
+  return path.join(app.getPath("userData"), "window-state.json");
+}
+
+function readWindowState() {
+  const fp = getWindowStateFilePath();
+  if (!fs.existsSync(fp)) {
+    return null;
+  }
+  try {
+    const o = JSON.parse(fs.readFileSync(fp, "utf8"));
+    if (typeof o.width !== "number" || typeof o.height !== "number") {
+      return null;
+    }
+    o.width = Math.max(800, Math.round(o.width));
+    o.height = Math.max(600, Math.round(o.height));
+    if (typeof o.x === "number") {
+      o.x = Math.round(o.x);
+    } else {
+      o.x = undefined;
+    }
+    if (typeof o.y === "number") {
+      o.y = Math.round(o.y);
+    } else {
+      o.y = undefined;
+    }
+    o.isMaximized = Boolean(o.isMaximized);
+    return o;
+  } catch {
+    return null;
+  }
+}
+
+function writeWindowState(win) {
+  if (!win || win.isDestroyed()) {
+    return;
+  }
+  try {
+    const isMax = win.isMaximized();
+    const b =
+      isMax && typeof win.getNormalBounds === "function"
+        ? win.getNormalBounds()
+        : win.getBounds();
+    const o = {
+      width: b.width,
+      height: b.height,
+      x: b.x,
+      y: b.y,
+      isMaximized: isMax,
+    };
+    fs.writeFileSync(getWindowStateFilePath(), JSON.stringify(o) + "\n", "utf8");
+  } catch (e) {
+    console.warn("[app] vensterstate opslaan mislukt:", e);
+  }
+}
+
+function isWindowSufficientlyOnScreen(window) {
+  if (window.isDestroyed()) {
+    return true;
+  }
+  const b = window.getBounds();
+  const displays = screen.getAllDisplays();
+  return displays.some((d) => {
+    const w = d.workArea;
+    const xOverlap = Math.max(0, Math.min(b.x + b.width, w.x + w.width) - Math.max(b.x, w.x));
+    const yOverlap = Math.max(0, Math.min(b.y + b.height, w.y + w.height) - Math.max(b.y, w.y));
+    return xOverlap >= 80 && yOverlap >= 80;
+  });
+}
+
+let mainWindowStateSaveTimer = null;
+
+function scheduleWriteMainWindowState(win) {
+  clearTimeout(mainWindowStateSaveTimer);
+  mainWindowStateSaveTimer = setTimeout(() => {
+    mainWindowStateSaveTimer = null;
+    writeWindowState(win);
+  }, 500);
+}
+
+function buildMainWindowOptions() {
+  const d = { width: 1280, height: 800, minWidth: 800, minHeight: 600 };
+  const saved = readWindowState();
+  if (!saved) {
+    return d;
+  }
+  d.width = saved.width;
+  d.height = saved.height;
+  if (typeof saved.x === "number" && typeof saved.y === "number") {
+    d.x = saved.x;
+    d.y = saved.y;
+  }
+  d.show = false;
+  d.autoHideMenuBar = true;
+  return { ...d, _saved: saved };
+}
 
 /**
  * Zelfde Chromium-build als de Electron-versie, maar zonder "Electron" in de UA.
@@ -301,16 +400,69 @@ function registerUpdateShortcut() {
   }
 }
 
+function isOfflineFileUrl(failedUrl) {
+  if (!failedUrl) {
+    return false;
+  }
+  try {
+    const u = new URL(failedUrl);
+    return u.protocol === "file:" && u.pathname.replace(/\\/g, "/").includes("offline/index.html");
+  } catch {
+    return false;
+  }
+}
+
+function loadOfflineErrorPage(win, errorCode, errorDescription, validatedURL) {
+  const filePath = path.join(__dirname, "offline", "index.html");
+  const u = pathToFileURL(filePath);
+  u.search = new URLSearchParams({
+    code: String(errorCode),
+    desc: String(errorDescription ?? ""),
+    url: String(validatedURL ?? ""),
+    target: APP_URL,
+  }).toString();
+  void win.loadURL(u.href);
+}
+
 function createWindow() {
+  const winOpts = buildMainWindowOptions();
+  const saved = winOpts._saved ?? null;
+  const browserOpts = { ...winOpts };
+  delete browserOpts._saved;
+
   const win = new BrowserWindow({
-    width: 1280,
-    height: 800,
+    width: browserOpts.width,
+    height: browserOpts.height,
+    x: browserOpts.x,
+    y: browserOpts.y,
     minWidth: 800,
     minHeight: 600,
     show: false,
     autoHideMenuBar: true,
     icon: createAppIcon(),
     webPreferences: sharedWebPreferences,
+  });
+
+  win.on("resize", () => {
+    if (!win.isMaximized()) {
+      scheduleWriteMainWindowState(win);
+    }
+  });
+  win.on("move", () => {
+    if (!win.isMaximized()) {
+      scheduleWriteMainWindowState(win);
+    }
+  });
+  win.on("maximize", () => {
+    writeWindowState(win);
+  });
+  win.on("unmaximize", () => {
+    scheduleWriteMainWindowState(win);
+  });
+  win.on("close", () => {
+    clearTimeout(mainWindowStateSaveTimer);
+    mainWindowStateSaveTimer = null;
+    writeWindowState(win);
   });
 
   win.webContents.setWindowOpenHandler(() => ({
@@ -327,12 +479,32 @@ function createWindow() {
   }));
 
   // ERR_ABORTED (-3) komt o.a. voor bij doorsturen/afbreken van een lopende laad, geen actie nodig
-  win.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL) => {
-    if (errorCode === -3) return;
-    console.error("[app] pagina laadde niet:", { errorCode, errorDescription, validatedURL });
-  });
+  win.webContents.on(
+    "did-fail-load",
+    (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+      if (isMainFrame === false) {
+        return;
+      }
+      if (errorCode === -3) {
+        return;
+      }
+      if (isOfflineFileUrl(String(validatedURL))) {
+        console.error("[app] offline-pagina laadde niet:", { errorCode, errorDescription, validatedURL });
+        return;
+      }
+      console.error("[app] pagina laadde niet:", { errorCode, errorDescription, validatedURL });
+      loadOfflineErrorPage(win, errorCode, errorDescription, String(validatedURL ?? ""));
+    },
+  );
 
   win.once("ready-to-show", () => {
+    if (saved) {
+      if (saved.isMaximized) {
+        win.maximize();
+      } else if (!isWindowSufficientlyOnScreen(win)) {
+        win.center();
+      }
+    }
     if (process.platform === "win32") {
       try {
         win.setIcon(createAppIcon());
