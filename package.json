@@ -4,6 +4,14 @@
   "description": "Desktop app die pm.webleaders.nl toont in Electron",
   "license": "ISC",
   "author": "",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/BaasJarno/PM-Webleaders-app.git"
+  },
+  "bugs": {
+    "url": "https://github.com/BaasJarno/PM-Webleaders-app/issues"
+  },
+  "homepage": "https://github.com/BaasJarno/PM-Webleaders-app#readme",
   "type": "commonjs",
   "main": "main.js",
   "scripts": {
