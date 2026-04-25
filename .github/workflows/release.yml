@@ -1,7 +1,5 @@
-# Handmatig: alleen build-artefacten (geen GitHub Release).
-# Tag v*: build + GitHub Release met DMG, EXE en blockmaps.
-#
-# Gebruik: git tag v1.0.1 && git push origin v1.0.1
+# Geen actions/upload-artifact: dat telt mee op je GitHub Actions-opslaglimiet.
+# Op tags: lege release aanmaken, daarna per platform direct gh release upload (zelfde token).
 
 name: Build en release
 
@@ -11,17 +9,35 @@ on:
     tags:
       - "v*"
 
-# contents: write = releases + assets. pull-requests: read = --generate-notes (gh release create).
-concurrency:
-  group: release-${{ github.ref }}
-  cancel-in-progress: false
-
 permissions:
   contents: write
-  pull-requests: read
 
 jobs:
+  # Altijd OK (nooit skipped) zodat de build-jobs kunnen draaien; op tag wordt de release klaar gezet.
+  release-or-skip:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: GitHub Release aanmaken (alleen bij tag)
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if ! gh release view "${GITHUB_REF_NAME}" 2>/dev/null; then
+            gh release create "${GITHUB_REF_NAME}" --title "Webleaders PM ${GITHUB_REF_NAME}" --generate-notes
+          else
+            echo "Release bestaat al."
+          fi
+
+      - name: Handmatige run (zonder tag)
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        run: echo "Geen tag — build-only; geen upload naar Releases."
+
   build-macos:
+    needs: [release-or-skip]
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -36,15 +52,21 @@ jobs:
           npm ci
           npm run dist:mac
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: macos-assets
-          path: |
-            release/*.dmg
-            release/*.blockmap
-          if-no-files-found: error
+      - name: Upload bestanden naar GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          cd release
+          shopt -s nullglob
+          for f in *.dmg *.blockmap; do
+            echo "Upload: $f"
+            gh release upload "${GITHUB_REF_NAME}" "$f" --clobber
+          done
 
   build-windows:
+    needs: [release-or-skip]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -60,54 +82,22 @@ jobs:
           npm ci
           npm run dist:win
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: windows-assets
-          path: |
-            release/*.exe
-            release/*.blockmap
-          if-no-files-found: error
-
-  create-release:
-    if: startsWith(github.ref, 'refs/tags/')
-    needs: [build-macos, build-windows]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download all build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern: "*-assets"
-          merge-multiple: true
-          path: dist
-
-      - name: Staging directory for release upload
-        run: |
-          mkdir -p upload
-          find dist -type f \( -name '*.dmg' -o -name '*.exe' -o -name '*.blockmap' \) -exec cp -v {} upload/ \;
-          echo "--- upload/ ---"
-          ls -la upload/
-
-      - name: Create or update GitHub Release (gh CLI; bestandsnamen met spaties)
+      - name: Upload bestanden naar GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          set -euo pipefail
-          shopt -s nullglob
-          mapfile -t files < <(find upload -maxdepth 1 -type f | sort)
-          if [ "${#files[@]}" -eq 0 ]; then
-            echo "::error::Geen bestanden in upload/ (leeg na download?)"
-            find . -type f 2>/dev/null | head -80
-            exit 1
-          fi
-          TAG="${{ github.ref_name }}"
-
-          if gh release view "$TAG" 2>/dev/null; then
-            echo "Release $TAG bestaat al; bestanden toevoegen/vervangen…"
-            gh release upload "$TAG" "${files[@]}" --clobber
-          else
-            # Volgorde: tag, daarna asset-bestanden, daarna flags (zie gh help release create)
-            gh release create "$TAG" "${files[@]}" \
-              --title "Webleaders PM $TAG" \
-              --generate-notes \
-              --latest
-          fi
+          $tag = $env:GITHUB_REF_NAME
+          $items = @(
+            Get-ChildItem -Path release -Filter *.exe -File
+            Get-ChildItem -Path release -Filter *.blockmap -File
+          )
+          if ($items.Count -eq 0) {
+            Get-ChildItem release | ForEach-Object { Write-Host "release:" $_.Name }
+            throw "Geen .exe of .blockmap in release/"
+          }
+          foreach ($f in $items) {
+            Write-Host "Upload: $($f.Name)"
+            gh release upload $tag $f.FullName --clobber
+          }
