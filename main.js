@@ -4,6 +4,7 @@ const {
   BrowserWindow,
   session,
   Menu,
+  globalShortcut,
   nativeTheme,
   nativeImage,
   dialog,
@@ -52,6 +53,38 @@ const sharedWebPreferences = {
   sandbox: true,
 };
 
+/** Geen Webleaders-menubalk; op macOS wel standaard app- + bewerkingsmenu. */
+function setApplicationMenu() {
+  if (process.platform === "darwin") {
+    Menu.setApplicationMenu(
+      Menu.buildFromTemplate([{ role: "appMenu" }, { role: "editMenu" }]),
+    );
+  } else {
+    Menu.setApplicationMenu(null);
+  }
+}
+
+function checkUpdatesUserInitiated() {
+  if (!app.isPackaged) {
+    void dialog.showMessageBox({
+      type: "info",
+      title: "Updates",
+      message: "Updates werken in de geïnstalleerde app, niet in de ontwikkelmodus (npm start).",
+    });
+    return;
+  }
+  void autoUpdater.checkForUpdates();
+}
+
+function registerUpdateShortcut() {
+  const ok = globalShortcut.register("CommandOrControl+U", () => {
+    checkUpdatesUserInitiated();
+  });
+  if (!ok) {
+    console.warn("[app] Snelkoppeling Ctrl+U (updates) kon niet geregistreerd worden (mogelijk in gebruik).");
+  }
+}
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1280,
@@ -59,54 +92,10 @@ function createWindow() {
     minWidth: 800,
     minHeight: 600,
     show: false,
+    autoHideMenuBar: true,
     icon: createAppIcon(),
     webPreferences: sharedWebPreferences,
   });
-
-  const menu = Menu.buildFromTemplate([
-    {
-      label: "Webleaders",
-      submenu: [
-        {
-          label: "Vernieuwen",
-          accelerator: "CmdOrCtrl+R",
-          click: () => {
-            if (!win.isDestroyed()) void win.webContents.reload();
-          },
-        },
-        { type: "separator" },
-        {
-          label: "Controleren op updates…",
-          click: () => {
-            if (!app.isPackaged) {
-              void dialog.showMessageBox(win, {
-                type: "info",
-                title: "Updates",
-                message: "Updates werken in de geïnstalleerde app, niet in de ontwikkelmodus (npm start).",
-              });
-              return;
-            }
-            void autoUpdater.checkForUpdates();
-          },
-        },
-        { type: "separator" },
-        {
-          label: "Ontwikkelgereedschap (Netwerk / console)",
-          accelerator: "F12",
-          click: () => {
-            if (win.webContents.isDevToolsOpened()) {
-              win.webContents.closeDevTools();
-            } else {
-              win.webContents.openDevTools({ mode: "undocked" });
-            }
-          },
-        },
-        { type: "separator" },
-        { role: "quit", label: "Afsluiten" },
-      ],
-    },
-  ]);
-  Menu.setApplicationMenu(menu);
 
   win.webContents.setWindowOpenHandler(() => ({
     action: "allow",
@@ -200,6 +189,8 @@ app.whenReady().then(() => {
   };
   nativeTheme.on("updated", syncAllWindowIcons);
 
+  setApplicationMenu();
+  registerUpdateShortcut();
   setupAutoUpdater();
   createWindow();
 
@@ -214,4 +205,8 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
     app.quit();
   }
+});
+
+app.on("will-quit", () => {
+  globalShortcut.unregisterAll();
 });
