@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="nl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';"
+    />
+    <title>Updates — Webleaders PM</title>
+    <style>
+      :root {
+        --bg: #0f1419;
+        --fg: #e7ecf1;
+        --muted: #8b9aad;
+        --accent: #3d9eff;
+        --err: #f87171;
+        --ok: #4ade80;
+        --border: #2a3442;
+        --log-bg: #080b0e;
+        font-family: "Segoe UI", system-ui, sans-serif;
+        font-size: 14px;
+        background: var(--bg);
+        color: var(--fg);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 16px;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      h1 {
+        font-size: 1.1rem;
+        font-weight: 600;
+        margin: 0;
+      }
+      .meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 20px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .meta strong {
+        color: var(--fg);
+        font-weight: 500;
+      }
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+      }
+      button {
+        background: #1e2a3a;
+        color: var(--fg);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 8px 14px;
+        cursor: pointer;
+        font: inherit;
+      }
+      button:hover {
+        background: #2a3b52;
+        border-color: var(--accent);
+      }
+      button.primary {
+        background: #1a4d6e;
+        border-color: var(--accent);
+      }
+      button:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+      #log {
+        flex: 1;
+        min-height: 220px;
+        margin: 0;
+        padding: 10px 12px;
+        background: var(--log-bg);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
+        font-size: 12px;
+        line-height: 1.45;
+        white-space: pre-wrap;
+        word-break: break-word;
+        overflow-y: auto;
+        color: #c8d4e0;
+      }
+      .line--error {
+        color: var(--err);
+      }
+      .line--ok {
+        color: var(--ok);
+      }
+      .line--warn {
+        color: #fbbf24;
+      }
+      details {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 10px 12px;
+        background: #121820;
+        font-size: 12px;
+        color: var(--muted);
+        line-height: 1.5;
+      }
+      details summary {
+        cursor: pointer;
+        color: var(--fg);
+        font-weight: 500;
+        margin-bottom: 6px;
+      }
+      details ul {
+        margin: 8px 0 0 0;
+        padding-left: 1.2em;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Updates en diagnose</h1>
+    <p class="meta" id="meta"></p>
+    <div class="row">
+      <button type="button" id="btnCheck" class="primary">Zoek nu naar updates</button>
+      <button type="button" id="btnCopy">Kopieer volledige log</button>
+      <button type="button" id="btnInstall" hidden class="primary">Installeer en herstart</button>
+    </div>
+    <pre id="log" aria-label="Statuslog"></pre>
+    <details>
+      <summary>Waarom faalt updaten soms?</summary>
+      <ul>
+        <li><strong>Alleen de geïnstalleerde app</strong> (niet <code>npm start</code>) kan echt op GitHub controleren.</li>
+        <li>De <strong>GitHub-repository</strong> (of in elk geval de releases) moeten <strong>openbaar</strong> leesbaar zijn zonder inlog, tenzij je zelf auth regelt.</li>
+        <li>Op de <strong>nieuwste release</strong> moeten o.a. <code>latest.yml</code> (Windows) of <code>latest-mac.yml</code> (Mac) als <strong>bestand bij de release</strong> staan, naast de installer/zip.</li>
+        <li>Een release die alleen als <strong>pre-release</strong> is gemarkeerd, wordt soms overgeslagen; gebruik geen pre-release tenzij je weet dat je die nodig hebt.</li>
+        <li>Op je pc moet de <strong>geïnstalleerde versie lager</strong> zijn dan de release (semver); anders: “geen update”.</li>
+        <li>Netwerk, proxy of firewall kunnen GitHub <strong>blokkeren</strong> — de fout in het rood zegt meestal wat er misgaat (code, URL of netwerk).</li>
+      </ul>
+    </details>
+    <script src="./ui.js"></script>
+  </body>
+</html>

@@ -1,5 +1,6 @@
 const path = require("path");
 const fs = require("fs");
+const pkg = require(path.join(__dirname, "package.json"));
 const {
   app,
   BrowserWindow,
@@ -8,6 +9,8 @@ const {
   globalShortcut,
   nativeImage,
   dialog,
+  ipcMain,
+  clipboard,
 } = require("electron");
 const { autoUpdater } = require("electron-updater");
 
@@ -77,52 +80,216 @@ function getDialogParent() {
   return BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0] ?? null;
 }
 
-function checkUpdatesUserInitiated() {
-  if (!app.isPackaged) {
-    void dialog.showMessageBox({
-      type: "info",
-      title: "Updates",
-      message: "Updates werken in de geïnstalleerde app, niet in de ontwikkelmodus (npm start).",
-    });
+/** Events voor het update-diagnosevenster (ook als dat nog dicht is). */
+const pendingUpdatePanelEvents = [];
+const PENDING_UPDATE_MAX = 100;
+
+let updatePanelWindow = null;
+let updatePanelReady = false;
+
+function safeErrorPayload(err) {
+  if (!err) {
+    return { message: "Onbekende fout" };
+  }
+  if (err instanceof Error) {
+    return {
+      message: err.message,
+      name: err.name,
+      code: err.code,
+      stack: err.stack,
+    };
+  }
+  if (typeof err === "string") {
+    return { message: err };
+  }
+  if (err.message) {
+    return {
+      message: err.message,
+      name: err.name,
+      code: err.code,
+      stack: err.stack,
+    };
+  }
+  return { message: String(err) };
+}
+
+function safeDetailForPanel(type, data) {
+  if (type === "error") {
+    return safeErrorPayload(data);
+  }
+  if (type === "download-progress" && data && typeof data === "object") {
+    return {
+      percent: data.percent,
+      bytesPerSecond: data.bytesPerSecond,
+      total: data.total,
+      transferred: data.transferred,
+    };
+  }
+  if (data && typeof data === "object" && !Array.isArray(data)) {
+    try {
+      return JSON.parse(JSON.stringify(data));
+    } catch {
+      return { message: String(data) };
+    }
+  }
+  return data;
+}
+
+function pushUpdateEvent(type, data) {
+  const entry = { type, t: Date.now(), data: safeDetailForPanel(type, data) };
+  if (
+    updatePanelWindow &&
+    !updatePanelWindow.isDestroyed() &&
+    updatePanelReady
+  ) {
+    try {
+      updatePanelWindow.webContents.send("update:append", entry);
+    } catch (e) {
+      console.error("[update] panel sturen mislukt:", e);
+    }
+  } else {
+    pendingUpdatePanelEvents.push(entry);
+    if (pendingUpdatePanelEvents.length > PENDING_UPDATE_MAX) {
+      pendingUpdatePanelEvents.shift();
+    }
+  }
+}
+
+function flushPendingUpdatePanelEvents() {
+  if (!updatePanelWindow || updatePanelWindow.isDestroyed()) {
+    return;
+  }
+  for (const e of pendingUpdatePanelEvents) {
+    try {
+      updatePanelWindow.webContents.send("update:append", e);
+    } catch (err) {
+      console.error("[update] buffer flush mislukt:", err);
+    }
+  }
+  pendingUpdatePanelEvents.length = 0;
+}
+
+function openOrFocusUpdatePanel() {
+  if (updatePanelWindow && !updatePanelWindow.isDestroyed()) {
+    updatePanelWindow.show();
+    try {
+      updatePanelWindow.moveTop();
+    } catch {
+      /* */
+    }
+    updatePanelWindow.focus();
     return;
   }
 
   const parent = getDialogParent();
-  const cleanup = () => {
-    autoUpdater.removeListener("error", onError);
-    autoUpdater.removeListener("update-not-available", onNotAvailable);
-  };
-
-  const onError = (err) => {
-    cleanup();
-    void dialog.showMessageBox(parent, {
-      type: "error",
-      title: "Update",
-      message: "Controleren op updates op GitHub is mislukt.",
-      detail: `${err.name ?? "Fout"}\n${err.message}\n\nControleer of op de release o.a. latest.yml (Windows) of latest-mac.yml (Mac) als bijlage staan, en geen 'pre-release' zonder toestemming.`,
-    });
-  };
-
-  const onNotAvailable = () => {
-    cleanup();
-    void dialog.showMessageBox(parent, {
-      type: "info",
-      title: "Geen update",
-      message: "Er is geen nieuwere release dan jouw huidige versie, of de server gaf geen resultaat (zelfde of oudere versie).",
-    });
-  };
-
-  /** Nieuwe versie: geen extra dialoog; autoDownload + update-downloaded vangen dit af. */
-  const onAvailable = () => {
-    cleanup();
-  };
-
-  autoUpdater.once("error", onError);
-  autoUpdater.once("update-not-available", onNotAvailable);
-  autoUpdater.once("update-available", onAvailable);
-  void autoUpdater.checkForUpdates().catch(() => {
-    /* onError afhandelt */
+  const w = new BrowserWindow({
+    width: 640,
+    height: 720,
+    minWidth: 400,
+    minHeight: 420,
+    show: false,
+    autoHideMenuBar: true,
+    title: "Updates — Webleaders PM",
+    parent: parent && !parent.isDestroyed() ? parent : undefined,
+    modal: false,
+    icon: createAppIcon(),
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      preload: path.join(__dirname, "updatePanel", "preload.js"),
+    },
   });
+
+  w.once("ready-to-show", () => {
+    w.show();
+  });
+
+  w.on("closed", () => {
+    updatePanelWindow = null;
+    updatePanelReady = false;
+  });
+
+  w.loadFile(path.join(__dirname, "updatePanel", "index.html"));
+  updatePanelWindow = w;
+}
+
+function registerUpdatePanelIpc() {
+  ipcMain.handle("update:panelWebReady", (event) => {
+    if (!updatePanelWindow || updatePanelWindow.isDestroyed()) {
+      return { ok: false };
+    }
+    const s = event.sender;
+    if (!s || s.id !== updatePanelWindow.webContents.id) {
+      return { ok: false };
+    }
+    updatePanelReady = true;
+    flushPendingUpdatePanelEvents();
+    return { ok: true };
+  });
+
+  ipcMain.handle("update:getInit", () => {
+    const publish = pkg.build && pkg.build.publish ? pkg.build.publish : {};
+    return {
+      appVersion: app.getVersion(),
+      isPackaged: app.isPackaged,
+      platform: process.platform,
+      githubOwner: publish.owner ?? "",
+      githubRepo: publish.repo ?? "",
+    };
+  });
+
+  ipcMain.handle("update:check", async () => {
+    if (!app.isPackaged) {
+      return { ok: false, error: "not_packaged" };
+    }
+    try {
+      const r = await autoUpdater.checkForUpdates();
+      return { ok: true, result: r ? { isUpdateAvailable: r.isUpdateAvailable, version: r.updateInfo?.version } : null };
+    } catch (e) {
+      pushUpdateEvent("error", e);
+      return { ok: false, error: safeErrorPayload(e) };
+    }
+  });
+
+  ipcMain.handle("update:copyLog", (_e, text) => {
+    if (typeof text === "string" && text.length > 0) {
+      clipboard.writeText(text);
+    }
+    return { ok: true };
+  });
+
+  ipcMain.handle("update:install", () => {
+    if (!app.isPackaged) {
+      return { ok: false };
+    }
+    setImmediate(() => {
+      try {
+        autoUpdater.quitAndInstall(true, true);
+      } catch (e) {
+        console.error("[update] quitAndInstall:", e);
+      }
+    });
+    return { ok: true };
+  });
+
+  ipcMain.handle("update:closePanel", () => {
+    if (updatePanelWindow && !updatePanelWindow.isDestroyed()) {
+      updatePanelWindow.close();
+    }
+    return { ok: true };
+  });
+}
+
+function checkUpdatesUserInitiated() {
+  openOrFocusUpdatePanel();
+  if (app.isPackaged) {
+    setTimeout(() => {
+      void autoUpdater.checkForUpdates().catch((e) => {
+        pushUpdateEvent("error", e);
+      });
+    }, 500);
+  }
 }
 
 function registerUpdateShortcut() {
@@ -188,25 +355,68 @@ function setupAutoUpdater() {
   autoUpdater.autoInstallOnAppQuit = true;
   autoUpdater.disableWebInstaller = true;
   autoUpdater.disableDifferentialDownload = true;
-  autoUpdater.logger = {
-    info: (m) => console.log("[update]", m),
-    warn: (m) => console.warn("[update]", m),
-    error: (m) => console.error("[update]", m),
-    debug: (m) => (console.debug ? console.debug("[update]", m) : console.log("[update]", m)),
+  const log = {
+    info: (m) => {
+      const s = String(m);
+      console.log("[update]", m);
+      pushUpdateEvent("log", { level: "info", m: s });
+    },
+    warn: (m) => {
+      const s = String(m);
+      console.warn("[update]", m);
+      pushUpdateEvent("log", { level: "warn", m: s });
+    },
+    error: (m) => {
+      const s = String(m);
+      console.error("[update]", m);
+      pushUpdateEvent("log", { level: "error", m: s });
+    },
+    debug: (m) => {
+      const s = String(m);
+      if (console.debug) {
+        console.debug("[update]", m);
+      } else {
+        console.log("[update]", m);
+      }
+      pushUpdateEvent("log", { level: "debug", m: s });
+    },
   };
+  autoUpdater.logger = log;
 
-  // Alleen stille logs bij automatische start (geen pop-up-storm)
-  autoUpdater.on("error", (err) => {
-    console.error("[update] fout (start):", err);
+  autoUpdater.on("checking-for-update", () => {
+    pushUpdateEvent("checking-for-update", {});
   });
 
-  autoUpdater.on("update-downloaded", (_e, info) => {
+  autoUpdater.on("update-available", (info) => {
+    pushUpdateEvent("update-available", info);
+  });
+
+  autoUpdater.on("update-not-available", (info) => {
+    pushUpdateEvent("update-not-available", info ?? {});
+  });
+
+  autoUpdater.on("download-progress", (progress) => {
+    pushUpdateEvent("download-progress", progress);
+  });
+
+  autoUpdater.on("error", (err) => {
+    console.error("[update] fout:", err);
+    pushUpdateEvent("error", err);
+  });
+
+  autoUpdater.on("update-downloaded", (info) => {
+    pushUpdateEvent("update-downloaded", info);
+    const showSystemDialog = !updatePanelReady;
+    if (!showSystemDialog) {
+      return;
+    }
     const parent = getDialogParent();
+    const ver = info && info.version ? info.version : "?";
     void dialog
       .showMessageBox(parent, {
         type: "info",
         title: "Update klaar",
-        message: `Versie ${info.version} is binnen. Wil je de app herstarten om te installeren?`,
+        message: `Versie ${ver} is binnen. Wil je de app herstarten om te installeren?`,
         buttons: ["Later", "Herstarten"],
         defaultId: 1,
         cancelId: 0,
@@ -222,6 +432,7 @@ function setupAutoUpdater() {
   setTimeout(() => {
     void autoUpdater.checkForUpdates().catch((e) => {
       console.error("[update] start-check:", e);
+      pushUpdateEvent("error", e);
     });
   }, 5000);
 }
@@ -240,6 +451,7 @@ app.whenReady().then(() => {
   }
 
   setApplicationMenu();
+  registerUpdatePanelIpc();
   registerUpdateShortcut();
   setupAutoUpdater();
   createWindow();
