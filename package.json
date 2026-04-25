@@ -1,6 +1,6 @@
 {
   "name": "pm-webleaders-app",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Desktop app die pm.webleaders.nl toont in Electron",
   "license": "ISC",
   "author": "",
@@ -41,7 +41,7 @@
       "!release/**"
     ],
     "win": {
-      "icon": "images/favicon-light.png",
+      "icon": "images/favicon-dark.png",
       "signAndEditExecutable": false,
       "target": [
         {
@@ -53,13 +53,15 @@
       ]
     },
     "nsis": {
+      "artifactName": "WebleadersPM-Setup-${version}.${ext}",
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true
     },
     "mac": {
-      "icon": "images/favicon-light.png",
+      "icon": "images/favicon-dark.png",
+      "artifactName": "WebleadersPM-${version}-${arch}.${ext}",
       "category": "public.app-category.business",
       "target": [
         {

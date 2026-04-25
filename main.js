@@ -5,7 +5,6 @@ const {
   session,
   Menu,
   globalShortcut,
-  nativeTheme,
   nativeImage,
   dialog,
 } = require("electron");
@@ -16,10 +15,9 @@ if (process.platform === "win32") {
   app.setAppUserModelId("nl.webleaders.pm");
 }
 
-/** Favicon: light voor donkere UI, dark voor lichte UI (zelfde als de site). */
+/** Altijd het merkpictogram (donkere variant). */
 function getAppIconPath() {
-  const file = nativeTheme.shouldUseDarkColors ? "favicon-light.png" : "favicon-dark.png";
-  return path.join(__dirname, "images", file);
+  return path.join(__dirname, "images", "favicon-dark.png");
 }
 
 function createAppIcon() {
@@ -64,6 +62,10 @@ function setApplicationMenu() {
   }
 }
 
+function getDialogParent() {
+  return BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0] ?? null;
+}
+
 function checkUpdatesUserInitiated() {
   if (!app.isPackaged) {
     void dialog.showMessageBox({
@@ -73,7 +75,43 @@ function checkUpdatesUserInitiated() {
     });
     return;
   }
-  void autoUpdater.checkForUpdates();
+
+  const parent = getDialogParent();
+  const cleanup = () => {
+    autoUpdater.removeListener("error", onError);
+    autoUpdater.removeListener("update-not-available", onNotAvailable);
+  };
+
+  const onError = (err) => {
+    cleanup();
+    void dialog.showMessageBox(parent, {
+      type: "error",
+      title: "Update",
+      message: "Controleren op updates op GitHub is mislukt.",
+      detail: `${err.name ?? "Fout"}\n${err.message}\n\nControleer of op de release o.a. latest.yml (Windows) of latest-mac.yml (Mac) als bijlage staan, en geen 'pre-release' zonder toestemming.`,
+    });
+  };
+
+  const onNotAvailable = () => {
+    cleanup();
+    void dialog.showMessageBox(parent, {
+      type: "info",
+      title: "Geen update",
+      message: "Er is geen nieuwere release dan jouw huidige versie, of de server gaf geen resultaat (zelfde of oudere versie).",
+    });
+  };
+
+  /** Nieuwe versie: geen extra dialoog; autoDownload + update-downloaded vangen dit af. */
+  const onAvailable = () => {
+    cleanup();
+  };
+
+  autoUpdater.once("error", onError);
+  autoUpdater.once("update-not-available", onNotAvailable);
+  autoUpdater.once("update-available", onAvailable);
+  void autoUpdater.checkForUpdates().catch(() => {
+    /* onError afhandelt */
+  });
 }
 
 function registerUpdateShortcut() {
@@ -130,16 +168,26 @@ function setupAutoUpdater() {
 
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.disableWebInstaller = true;
+  autoUpdater.disableDifferentialDownload = true;
+  autoUpdater.logger = {
+    info: (m) => console.log("[update]", m),
+    warn: (m) => console.warn("[update]", m),
+    error: (m) => console.error("[update]", m),
+    debug: (m) => (console.debug ? console.debug("[update]", m) : console.log("[update]", m)),
+  };
 
+  // Alleen stille logs bij automatische start (geen pop-up-storm)
   autoUpdater.on("error", (err) => {
-    console.error("[update] fout:", err);
+    console.error("[update] fout (start):", err);
   });
 
   autoUpdater.on("update-downloaded", (_e, info) => {
+    const parent = getDialogParent();
     void dialog
-      .showMessageBox({
+      .showMessageBox(parent, {
         type: "info",
-        title: "Update beschikbaar",
+        title: "Update klaar",
         message: `Versie ${info.version} is binnen. Wil je de app herstarten om te installeren?`,
         buttons: ["Later", "Herstarten"],
         defaultId: 1,
@@ -152,9 +200,12 @@ function setupAutoUpdater() {
       });
   });
 
-  void autoUpdater.checkForUpdates().catch((e) => {
-    console.error("[update] check mislukt:", e);
-  });
+  // Na start even wachten (netwerk / sessie), dan op achtergrond controleren
+  setTimeout(() => {
+    void autoUpdater.checkForUpdates().catch((e) => {
+      console.error("[update] start-check:", e);
+    });
+  }, 5000);
 }
 
 app.setName("Webleaders PM");
@@ -169,25 +220,6 @@ app.whenReady().then(() => {
       /* optioneel */
     }
   }
-
-  const syncAllWindowIcons = () => {
-    const img = createAppIcon();
-    for (const w of BrowserWindow.getAllWindows()) {
-      try {
-        w.setIcon(img);
-      } catch {
-        /* optioneel */
-      }
-    }
-    if (process.platform === "darwin") {
-      try {
-        app.dock.setIcon(getAppIconPath());
-      } catch {
-        /* optioneel */
-      }
-    }
-  };
-  nativeTheme.on("updated", syncAllWindowIcons);
 
   setApplicationMenu();
   registerUpdateShortcut();
