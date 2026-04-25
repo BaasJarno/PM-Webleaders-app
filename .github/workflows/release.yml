@@ -1,7 +1,7 @@
-# Handmatig: Actions → "Build en release" → Run (alleen artefacten, geen GitHub Release).
-# Tag v*: zelfde builds + optioneel publiceren als GitHub Release (DMG + Windows installer + blockmaps).
+# Handmatig: alleen build-artefacten (geen GitHub Release).
+# Tag v*: build + GitHub Release met DMG, EXE en blockmaps.
 #
-# Gebruik: git tag v1.0.0 && git push origin v1.0.0
+# Gebruik: git tag v1.0.1 && git push origin v1.0.1
 
 name: Build en release
 
@@ -11,8 +11,14 @@ on:
     tags:
       - "v*"
 
+# contents: write = releases + assets. pull-requests: read = --generate-notes (gh release create).
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: write
+  pull-requests: read
 
 jobs:
   build-macos:
@@ -78,15 +84,30 @@ jobs:
         run: |
           mkdir -p upload
           find dist -type f \( -name '*.dmg' -o -name '*.exe' -o -name '*.blockmap' \) -exec cp -v {} upload/ \;
-          ls -la upload
+          echo "--- upload/ ---"
+          ls -la upload/
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          name: Webleaders PM ${{ github.ref_name }}
-          files: |
-            upload/*
-          generate_release_notes: true
+      - name: Create or update GitHub Release (gh CLI; bestandsnamen met spaties)
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          mapfile -t files < <(find upload -maxdepth 1 -type f | sort)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "::error::Geen bestanden in upload/ (leeg na download?)"
+            find . -type f 2>/dev/null | head -80
+            exit 1
+          fi
+          TAG="${{ github.ref_name }}"
+
+          if gh release view "$TAG" 2>/dev/null; then
+            echo "Release $TAG bestaat al; bestanden toevoegen/vervangen…"
+            gh release upload "$TAG" "${files[@]}" --clobber
+          else
+            # Volgorde: tag, daarna asset-bestanden, daarna flags (zie gh help release create)
+            gh release create "$TAG" "${files[@]}" \
+              --title "Webleaders PM $TAG" \
+              --generate-notes \
+              --latest
+          fi
