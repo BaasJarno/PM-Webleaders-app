@@ -1,0 +1,72 @@
+{
+  "name": "pm-webleaders-app",
+  "version": "1.0.0",
+  "description": "Desktop app die pm.webleaders.nl toont in Electron",
+  "license": "ISC",
+  "author": "",
+  "type": "commonjs",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win",
+    "dist:mac": "electron-builder --mac",
+    "dist:dir": "electron-builder --dir",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "build": {
+    "appId": "nl.webleaders.pm",
+    "productName": "Webleaders PM",
+    "directories": {
+      "output": "release",
+      "buildResources": "."
+    },
+    "files": [
+      "main.js",
+      "package.json",
+      "images/favicon-light.png",
+      "images/favicon-dark.png"
+    ],
+    "win": {
+      "icon": "images/favicon-light.png",
+      "signAndEditExecutable": false,
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "mac": {
+      "icon": "images/favicon-light.png",
+      "category": "public.app-category.business",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "extendInfo": {
+        "NSHumanReadableCopyright": "Copyright © Webleaders"
+      }
+    },
+    "dmg": {
+      "title": "Webleaders PM ${version}"
+    }
+  },
+  "devDependencies": {
+    "electron": "^41.3.0",
+    "electron-builder": "^26.0.0"
+  }
+}

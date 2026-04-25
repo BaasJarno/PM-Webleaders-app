@@ -1,0 +1,92 @@
+# Handmatig: Actions → "Build en release" → Run (alleen artefacten, geen GitHub Release).
+# Tag v*: zelfde builds + optioneel publiceren als GitHub Release (DMG + Windows installer + blockmaps).
+#
+# Gebruik: git tag v1.0.0 && git push origin v1.0.0
+
+name: Build en release
+
+on:
+  workflow_dispatch: {}
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install and build (macOS)
+        run: |
+          npm ci
+          npm run dist:mac
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-assets
+          path: |
+            release/*.dmg
+            release/*.blockmap
+          if-no-files-found: error
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install and build (Windows)
+        shell: pwsh
+        run: |
+          npm ci
+          npm run dist:win
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-assets
+          path: |
+            release/*.exe
+            release/*.blockmap
+          if-no-files-found: error
+
+  create-release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [build-macos, build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: "*-assets"
+          merge-multiple: true
+          path: dist
+
+      - name: Staging directory for release upload
+        run: |
+          mkdir -p upload
+          find dist -type f \( -name '*.dmg' -o -name '*.exe' -o -name '*.blockmap' \) -exec cp -v {} upload/ \;
+          ls -la upload
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Webleaders PM ${{ github.ref_name }}
+          files: |
+            upload/*
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
