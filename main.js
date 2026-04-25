@@ -1,4 +1,5 @@
 const path = require("path");
+const fs = require("fs");
 const {
   app,
   BrowserWindow,
@@ -15,9 +16,19 @@ if (process.platform === "win32") {
   app.setAppUserModelId("nl.webleaders.pm");
 }
 
-/** Altijd het merkpictogram (donkere variant). */
+/**
+ * Pictogram: in productie liever van schijf (app.asar.unpacked) i.p.v. asar;
+ * + signAndEditExecutable in de build zet het icoon in de .exe voor de Windows-taakbalk.
+ */
 function getAppIconPath() {
-  return path.join(__dirname, "images", "favicon-dark.png");
+  const relative = path.join("images", "favicon-dark.png");
+  if (app.isPackaged) {
+    const unpacked = path.join(process.resourcesPath, "app.asar.unpacked", relative);
+    if (fs.existsSync(unpacked)) {
+      return unpacked;
+    }
+  }
+  return path.join(__dirname, relative);
 }
 
 function createAppIcon() {
@@ -155,6 +166,13 @@ function createWindow() {
   });
 
   win.once("ready-to-show", () => {
+    if (process.platform === "win32") {
+      try {
+        win.setIcon(createAppIcon());
+      } catch {
+        /* optioneel */
+      }
+    }
     win.show();
   });
 

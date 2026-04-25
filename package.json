@@ -1,6 +1,6 @@
 {
   "name": "pm-webleaders-app",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "Desktop app die pm.webleaders.nl toont in Electron",
   "license": "ISC",
   "author": "",
@@ -40,9 +40,12 @@
       "!**/.git/**",
       "!release/**"
     ],
+    "asarUnpack": [
+      "images/favicon-dark.png"
+    ],
     "win": {
       "icon": "images/favicon-dark.png",
-      "signAndEditExecutable": false,
+      "signAndEditExecutable": true,
       "target": [
         {
           "target": "nsis",
