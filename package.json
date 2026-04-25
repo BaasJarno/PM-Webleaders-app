@@ -1,6 +1,6 @@
 {
   "name": "pm-webleaders-app",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Desktop app die pm.webleaders.nl toont in Electron",
   "license": "ISC",
   "author": "",
@@ -25,16 +25,20 @@
   "build": {
     "appId": "nl.webleaders.pm",
     "productName": "Webleaders PM",
-    "publish": null,
+    "publish": {
+      "provider": "github",
+      "owner": "BaasJarno",
+      "repo": "PM-Webleaders-app"
+    },
     "directories": {
       "output": "release",
       "buildResources": "."
     },
     "files": [
-      "main.js",
-      "package.json",
-      "images/favicon-light.png",
-      "images/favicon-dark.png"
+      "**/*",
+      "!**/.github/**",
+      "!**/.git/**",
+      "!release/**"
     ],
     "win": {
       "icon": "images/favicon-light.png",
@@ -64,6 +68,13 @@
             "x64",
             "arm64"
           ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         }
       ],
       "extendInfo": {
@@ -77,5 +88,8 @@
   "devDependencies": {
     "electron": "^41.3.0",
     "electron-builder": "^26.0.0"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.3"
   }
 }

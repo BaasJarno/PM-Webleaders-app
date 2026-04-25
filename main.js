@@ -1,5 +1,19 @@
 const path = require("path");
-const { app, BrowserWindow, session, Menu, nativeTheme } = require("electron");
+const {
+  app,
+  BrowserWindow,
+  session,
+  Menu,
+  nativeTheme,
+  nativeImage,
+  dialog,
+} = require("electron");
+const { autoUpdater } = require("electron-updater");
+
+/** Voor Windows-taakbalk groepering en juiste pictogram; zelfde als build.appId. */
+if (process.platform === "win32") {
+  app.setAppUserModelId("nl.webleaders.pm");
+}
 
 /** Favicon: light voor donkere UI, dark voor lichte UI (zelfde als de site). */
 function getAppIconPath() {
@@ -7,11 +21,16 @@ function getAppIconPath() {
   return path.join(__dirname, "images", file);
 }
 
-/** Webleaders-app, pas na actieve Google-sessie in dezelfde sessie. */
-const APP_URL = "https://pm.webleaders.nl/";
+function createAppIcon() {
+  const p = getAppIconPath();
+  const img = nativeImage.createFromPath(p);
+  if (img.isEmpty()) {
+    console.warn("[app] pictogram ontbreekt of is ongeldig op pad:", p);
+  }
+  return img;
+}
 
-/** Eerst Google: zelfde cookie-jar, daarna is “Inloggen met Google” op de site meestal al gekoppeld. */
-const GOOGLE_ENTRY_URL = "https://accounts.google.com/";
+const APP_URL = "https://pm.webleaders.nl/";
 
 /**
  * Zelfde Chromium-build als de Electron-versie, maar zonder "Electron" in de UA.
@@ -33,78 +52,41 @@ const sharedWebPreferences = {
   sandbox: true,
 };
 
-function isPmWebleadersHost(hostname) {
-  return hostname === "pm.webleaders.nl" || hostname.endsWith(".webleaders.nl");
-}
-
-function isWebleadersAppUrl(url) {
-  try {
-    return isPmWebleadersHost(new URL(url).hostname);
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Na inlog (of al ingelogd) leidt Google meestal naar mijn account.
- * Dan kunnen we veilig Webleaders laden met een bestaande Google-sessie.
- */
-function isGoogleSessionReadyToHandoffUrl(url) {
-  try {
-    const u = new URL(url);
-    if (u.protocol !== "https:") return false;
-    return u.hostname === "myaccount.google.com";
-  } catch {
-    return false;
-  }
-}
-
 function createWindow() {
-  let handoffToWebleadersDone = false;
-
   const win = new BrowserWindow({
     width: 1280,
     height: 800,
     minWidth: 800,
     minHeight: 600,
     show: false,
-    icon: getAppIconPath(),
+    icon: createAppIcon(),
     webPreferences: sharedWebPreferences,
   });
-
-  const goToWebleaders = () => {
-    if (handoffToWebleadersDone) return;
-    handoffToWebleadersDone = true;
-    void win.loadURL(APP_URL);
-  };
-
-  const maybeHandoffFromGoogle = (url) => {
-    if (handoffToWebleadersDone) return;
-    if (!url) return;
-    if (isWebleadersAppUrl(url)) {
-      return;
-    }
-    if (isGoogleSessionReadyToHandoffUrl(url)) {
-      goToWebleaders();
-    }
-  };
 
   const menu = Menu.buildFromTemplate([
     {
       label: "Webleaders",
       submenu: [
         {
-          label: "Open Webleaders (na Google-inlog)",
-          accelerator: "CmdOrCtrl+O",
+          label: "Vernieuwen",
+          accelerator: "CmdOrCtrl+R",
           click: () => {
-            goToWebleaders();
+            if (!win.isDestroyed()) void win.webContents.reload();
           },
         },
+        { type: "separator" },
         {
-          label: "Opnieuw: Google inlog",
+          label: "Controleren op updates…",
           click: () => {
-            handoffToWebleadersDone = false;
-            void win.loadURL(GOOGLE_ENTRY_URL);
+            if (!app.isPackaged) {
+              void dialog.showMessageBox(win, {
+                type: "info",
+                title: "Updates",
+                message: "Updates werken in de geïnstalleerde app, niet in de ontwikkelmodus (npm start).",
+              });
+              return;
+            }
+            void autoUpdater.checkForUpdates();
           },
         },
         { type: "separator" },
@@ -134,22 +116,14 @@ function createWindow() {
       autoHideMenuBar: true,
       parent: win,
       modal: false,
-      icon: getAppIconPath(),
+      icon: createAppIcon(),
       webPreferences: sharedWebPreferences,
     },
   }));
 
-  win.webContents.on("did-navigate", (_e, url) => {
-    maybeHandoffFromGoogle(url);
-  });
-  win.webContents.on("did-navigate-in-page", (_e, url) => {
-    maybeHandoffFromGoogle(url);
-  });
-
   // ERR_ABORTED (-3) komt o.a. voor bij doorsturen/afbreken van een lopende laad, geen actie nodig
   win.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL) => {
     if (errorCode === -3) return;
-    // Zichtbaar in de terminal; open ook Ontwikkelgereedschap (F12) op het tabblad Network
     console.error("[app] pagina laadde niet:", { errorCode, errorDescription, validatedURL });
   });
 
@@ -157,7 +131,41 @@ function createWindow() {
     win.show();
   });
 
-  void win.loadURL(GOOGLE_ENTRY_URL);
+  void win.loadURL(APP_URL);
+}
+
+function setupAutoUpdater() {
+  if (!app.isPackaged) {
+    return;
+  }
+
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on("error", (err) => {
+    console.error("[update] fout:", err);
+  });
+
+  autoUpdater.on("update-downloaded", (_e, info) => {
+    void dialog
+      .showMessageBox({
+        type: "info",
+        title: "Update beschikbaar",
+        message: `Versie ${info.version} is binnen. Wil je de app herstarten om te installeren?`,
+        buttons: ["Later", "Herstarten"],
+        defaultId: 1,
+        cancelId: 0,
+      })
+      .then((r) => {
+        if (r.response === 1) {
+          autoUpdater.quitAndInstall(true, true);
+        }
+      });
+  });
+
+  void autoUpdater.checkForUpdates().catch((e) => {
+    console.error("[update] check mislukt:", e);
+  });
 }
 
 app.setName("Webleaders PM");
@@ -169,22 +177,22 @@ app.whenReady().then(() => {
     try {
       app.dock.setIcon(getAppIconPath());
     } catch {
-      /* icon optioneel */
+      /* optioneel */
     }
   }
 
   const syncAllWindowIcons = () => {
-    const p = getAppIconPath();
+    const img = createAppIcon();
     for (const w of BrowserWindow.getAllWindows()) {
       try {
-        w.setIcon(p);
+        w.setIcon(img);
       } catch {
         /* optioneel */
       }
     }
     if (process.platform === "darwin") {
       try {
-        app.dock.setIcon(p);
+        app.dock.setIcon(getAppIconPath());
       } catch {
         /* optioneel */
       }
@@ -192,6 +200,7 @@ app.whenReady().then(() => {
   };
   nativeTheme.on("updated", syncAllWindowIcons);
 
+  setupAutoUpdater();
   createWindow();
 
   app.on("activate", () => {

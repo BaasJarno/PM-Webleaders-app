@@ -54,21 +54,13 @@ jobs:
 
       - name: Upload bestanden naar GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
-        # Standaard shell op macOS is zsh (geen shopt); expliciet bash.
-        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          set -euo pipefail
+          set -e
           cd release
           shopt -s nullglob
-          files=( *.dmg *.blockmap )
-          if ((${#files[@]}==0)); then
-            ls -la
-            echo "::error::Geen .dmg of .blockmap in release/"
-            exit 1
-          fi
-          for f in "${files[@]}"; do
+          for f in *.dmg *.zip *.blockmap *.yml; do
             echo "Upload: $f"
             gh release upload "${GITHUB_REF_NAME}" "$f" --clobber
           done
@@ -97,14 +89,16 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $tag = $env:GITHUB_REF_NAME
-          $exe = @(Get-ChildItem -Path release -Filter *.exe -File)
-          $map = @(Get-ChildItem -Path release -Filter *.blockmap -File)
-          $items = $exe + $map
-          if ($items.Count -lt 1) {
-            Get-ChildItem -Path release -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "release:" $_.Name }
-            throw "Geen .exe of .blockmap in release/"
+          $items = @(
+            Get-ChildItem -Path release -Filter *.exe -File
+            Get-ChildItem -Path release -Filter *.blockmap -File
+            Get-ChildItem -Path release -Filter *.yml -File
+          )
+          if ($items.Count -eq 0) {
+            Get-ChildItem release | ForEach-Object { Write-Host "release:" $_.Name }
+            throw "Geen .exe, .blockmap of .yml in release/"
           }
           foreach ($f in $items) {
             Write-Host "Upload: $($f.Name)"
-            & gh @('release', 'upload', $tag, $f.FullName, '--clobber')
+            gh release upload $tag $f.FullName --clobber
           }
