@@ -24,9 +24,14 @@ if (process.platform === "win32") {
 /**
  * Pictogram: in productie liever van schijf (app.asar.unpacked) i.p.v. asar;
  * + signAndEditExecutable in de build zet het icoon in de .exe voor de Windows-taakbalk.
+ * Op macOS de lichte variant (beter in Dock/menubalk); elders de donkere.
  */
+function getAppIconRelativeFilename() {
+  return process.platform === "darwin" ? "favicon-light.png" : "favicon-dark.png";
+}
+
 function getAppIconPath() {
-  const relative = path.join("images", "favicon-dark.png");
+  const relative = path.join("images", getAppIconRelativeFilename());
   if (app.isPackaged) {
     const unpacked = path.join(process.resourcesPath, "app.asar.unpacked", relative);
     if (fs.existsSync(unpacked)) {
