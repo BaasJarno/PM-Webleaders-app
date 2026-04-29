@@ -12,9 +12,11 @@
         --bg: #0f1419;
         --fg: #e7ecf1;
         --muted: #8b9aad;
-        --accent: #3d9eff;
+        --accent: #d9ed58;
+        --accent-fg: #0f1419;
+        --accent-hover: #c5dc44;
         --err: #f87171;
-        --ok: #4ade80;
+        --ok: #d9ed58;
         --border: #2a3442;
         --log-bg: #080b0e;
         font-family: "Segoe UI", system-ui, sans-serif;
@@ -64,13 +66,20 @@
         cursor: pointer;
         font: inherit;
       }
-      button:hover {
+      button:hover:not(:disabled) {
         background: #2a3b52;
         border-color: var(--accent);
       }
       button.primary {
-        background: #1a4d6e;
+        background: var(--accent);
+        color: var(--accent-fg);
         border-color: var(--accent);
+        font-weight: 600;
+      }
+      button.primary:hover:not(:disabled) {
+        background: var(--accent-hover);
+        border-color: var(--accent-hover);
+        color: var(--accent-fg);
       }
       button:disabled {
         opacity: 0.45;
@@ -115,6 +124,11 @@
         color: var(--fg);
         font-weight: 500;
         margin-bottom: 6px;
+      }
+      details summary:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+        border-radius: 2px;
       }
       details ul {
         margin: 8px 0 0 0;
