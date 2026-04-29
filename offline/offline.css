@@ -1,9 +1,13 @@
 :root {
+  color-scheme: dark;
   --bg: #0f1419;
   --fg: #e7ecf1;
   --muted: #8b9aad;
-  --accent: #3d9eff;
+  --accent: #d9ed58;
+  --accent-fg: #0f1419;
+  --accent-hover: #c5dc44;
   --border: #2a3442;
+  --surface: #141c26;
   font-family: "Segoe UI", system-ui, sans-serif;
   font-size: 15px;
   background: var(--bg);
@@ -23,45 +27,84 @@ body {
   text-align: center;
   line-height: 1.5;
 }
+.card {
+  max-width: 440px;
+  width: 100%;
+  padding: 28px 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+}
 h1 {
-  font-size: 1.2rem;
-  font-weight: 600;
-  margin: 0 0 8px 0;
+  font-size: 1.15rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  margin: 0 0 10px 0;
 }
 p {
-  margin: 0 0 20px 0;
+  margin: 0 0 18px 0;
   color: var(--muted);
-  max-width: 420px;
   font-size: 14px;
 }
 #details {
   font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
   font-size: 12px;
   color: #a8b4c2;
-  background: #080b0e;
+  background: var(--log-bg);
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 12px 14px;
   text-align: left;
-  max-width: 480px;
   width: 100%;
-  margin-bottom: 20px;
+  margin: 0 0 20px 0;
   word-break: break-all;
   white-space: pre-wrap;
+  line-height: 1.45;
 }
 #btn {
-  background: #1a4d6e;
-  color: var(--fg);
+  background: var(--accent);
+  color: var(--accent-fg);
   border: 1px solid var(--accent);
   border-radius: 8px;
   padding: 10px 22px;
   font: inherit;
+  font-weight: 600;
   cursor: pointer;
 }
-#btn:hover {
-  background: #256891;
+#btn:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+#btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
 }
 #btn:disabled {
   opacity: 0.45;
   cursor: wait;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+    --bg: #e8ecf1;
+    --fg: #12161c;
+    --muted: #4a5568;
+    --accent: #d9ed58;
+    --accent-fg: #0f1419;
+    --accent-hover: #c5dc44;
+    --border: #c5cdd8;
+    --surface: #ffffff;
+    --log-bg: #eef2f7;
+  }
+  body {
+    background: var(--bg);
+  }
+  .card {
+    box-shadow: 0 8px 28px rgba(15, 23, 42, 0.1);
+  }
+  #details {
+    color: #374151;
+  }
 }

@@ -51,6 +51,50 @@ function createAppIcon() {
 
 const APP_URL = "https://pm.webleaders.nl/";
 
+/** Taakbalk / Dock + venstertitel tijdens het laden van de hoofdsite (geen eigen web-UI). */
+function setMainWindowLoadingState(win, active) {
+  if (!win || win.isDestroyed()) {
+    return;
+  }
+  if (active) {
+    try {
+      win.setProgressBar(2);
+    } catch {
+      /* niet op alle platforms */
+    }
+    if (process.platform === "darwin") {
+      try {
+        app.dock.setProgressBar(2);
+      } catch {
+        /* */
+      }
+    }
+    try {
+      win.setTitle(`${app.getName()} — laden…`);
+    } catch {
+      /* */
+    }
+    return;
+  }
+  try {
+    win.setProgressBar(-1);
+  } catch {
+    /* */
+  }
+  if (process.platform === "darwin") {
+    try {
+      app.dock.setProgressBar(-1);
+    } catch {
+      /* */
+    }
+  }
+  try {
+    win.setTitle(app.getName());
+  } catch {
+    /* */
+  }
+}
+
 function getWindowStateFilePath() {
   return path.join(app.getPath("userData"), "window-state.json");
 }
@@ -482,6 +526,24 @@ function createWindow() {
     },
   }));
 
+  win.webContents.on("did-start-navigation", (_e, url, _inPlace, isMainFrame) => {
+    if (!isMainFrame) {
+      return;
+    }
+    const u = String(url);
+    if (u.startsWith("file:")) {
+      return;
+    }
+    if (!/^https?:\/\//i.test(u)) {
+      return;
+    }
+    setMainWindowLoadingState(win, true);
+  });
+
+  win.webContents.on("did-finish-load", () => {
+    setMainWindowLoadingState(win, false);
+  });
+
   // ERR_ABORTED (-3) komt o.a. voor bij doorsturen/afbreken van een lopende laad, geen actie nodig
   win.webContents.on(
     "did-fail-load",
@@ -497,6 +559,7 @@ function createWindow() {
         return;
       }
       console.error("[app] pagina laadde niet:", { errorCode, errorDescription, validatedURL });
+      setMainWindowLoadingState(win, false);
       loadOfflineErrorPage(win, errorCode, errorDescription, String(validatedURL ?? ""));
     },
   );

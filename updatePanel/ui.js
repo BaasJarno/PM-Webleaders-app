@@ -15,15 +15,18 @@ function handleAppend(payload) {
       return;
     }
     case "checking-for-update":
+      setDownloadProgress(false);
       appendLine(`[${time}] Zoeken naar updates op GitHub…`, "");
       return;
     case "update-available": {
       const v = data?.version ?? data?.ver ?? "?";
+      setDownloadProgress(false);
       appendLine(`[${time}] Nieuwe versie gevonden: ${v} (download start op de achtergrond, tenzij geblokkeerd).`, "line--ok");
       $btnInstall.hidden = true;
       return;
     }
     case "update-not-available": {
+      setDownloadProgress(false);
       appendLine(`[${time}] Geen nieuwere release dan deze app, of dezelfde versie.`, "");
       $btnInstall.hidden = true;
       return;
@@ -31,16 +34,13 @@ function handleAppend(payload) {
     case "download-progress": {
       const p = data;
       if (p && typeof p.percent === "number") {
-        const mb = p.total != null ? ` / ${(p.total / 1048576).toFixed(1)} MB` : "";
-        appendLine(
-          `[${time}] Download ${p.percent.toFixed(1)}% (${(p.transferred / 1048576).toFixed(1)} MB${mb})`,
-          "",
-        );
+        setDownloadProgress(true, p.percent, p.transferred, p.total);
       }
       return;
     }
     case "update-downloaded": {
       const v = data?.version ?? "?";
+      setDownloadProgress(false);
       lastDownloadedInfo = data;
       $btnInstall.hidden = true;
       appendLine(
@@ -50,6 +50,7 @@ function handleAppend(payload) {
       return;
     }
     case "error": {
+      setDownloadProgress(false);
       const m = data?.message ?? "Onbekende fout";
       const code = data?.code ? ` (code: ${data.code})` : "";
       const st = data?.stack ? `\n${String(data.stack).slice(0, 800)}` : "";
@@ -72,11 +73,54 @@ const $log = document.getElementById("log");
 const $meta = document.getElementById("meta");
 const $btnCheck = document.getElementById("btnCheck");
 const $btnCopy = document.getElementById("btnCopy");
+const $btnClear = document.getElementById("btnClear");
 const $btnInstall = document.getElementById("btnInstall");
+const $progressWrap = document.getElementById("progressWrap");
+const $progressBar = document.getElementById("progressBar");
+const $progressMeta = document.getElementById("progressMeta");
+const $progressLabel = document.getElementById("progressLabel");
 
 let lastDownloadedInfo = null;
 let lineCount = 0;
 const maxLines = 500;
+
+function setDownloadProgress(visible, percent, transferred, total) {
+  if (!$progressWrap || !$progressBar || !$progressMeta) {
+    return;
+  }
+  if (!visible) {
+    $progressWrap.classList.remove("is-visible");
+    $progressWrap.setAttribute("aria-hidden", "true");
+    $progressBar.value = 0;
+    $progressMeta.textContent = "";
+    if ($progressLabel) {
+      $progressLabel.textContent = "Download";
+    }
+    return;
+  }
+  $progressWrap.classList.add("is-visible");
+  $progressWrap.setAttribute("aria-hidden", "false");
+  if (typeof percent === "number") {
+    $progressBar.value = Math.min(100, Math.max(0, percent));
+  }
+  if ($progressLabel) {
+    $progressLabel.textContent =
+      typeof percent === "number" ? `Download (${percent.toFixed(0)}%)` : "Download";
+  }
+  if (transferred != null && total != null && total > 0) {
+    $progressMeta.textContent = `${(transferred / 1048576).toFixed(1)} / ${(total / 1048576).toFixed(1)} MB`;
+  } else if (typeof percent === "number") {
+    $progressMeta.textContent = `${percent.toFixed(1)}% voltooid`;
+  }
+}
+
+function clearLog() {
+  if (!$log) {
+    return;
+  }
+  $log.replaceChildren();
+  lineCount = 0;
+}
 
 function appendLine(text, className) {
   lineCount += 1;
@@ -113,6 +157,11 @@ $btnCopy.addEventListener("click", () => {
   const t = fullLogText();
   void window.updateUI.copyLog(t);
   appendLine(`[${formatTime()}] (Log gekopieerd naar klembord.)`, "line--ok");
+});
+
+$btnClear?.addEventListener("click", () => {
+  clearLog();
+  appendLine(`[${formatTime()}] Log gewist.`, "");
 });
 
 $btnCheck.addEventListener("click", () => {

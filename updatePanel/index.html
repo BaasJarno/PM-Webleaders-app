@@ -9,6 +9,7 @@
     <title>Updates — Webleaders PM</title>
     <style>
       :root {
+        color-scheme: dark;
         --bg: #0f1419;
         --fg: #e7ecf1;
         --muted: #8b9aad;
@@ -18,7 +19,9 @@
         --err: #f87171;
         --ok: #d9ed58;
         --border: #2a3442;
+        --surface: #141c26;
         --log-bg: #080b0e;
+        --details-bg: #121820;
         font-family: "Segoe UI", system-ui, sans-serif;
         font-size: 14px;
         background: var(--bg);
@@ -29,33 +32,98 @@
       }
       body {
         margin: 0;
-        padding: 16px;
+        padding: 18px 20px 20px;
         min-height: 100vh;
         display: flex;
         flex-direction: column;
-        gap: 12px;
+        gap: 14px;
+      }
+      .page-header {
+        padding-bottom: 2px;
+        border-bottom: 1px solid var(--border);
+        margin-bottom: 2px;
       }
       h1 {
-        font-size: 1.1rem;
-        font-weight: 600;
+        font-size: 1.2rem;
+        font-weight: 650;
+        letter-spacing: -0.02em;
+        margin: 0 0 4px 0;
+      }
+      .subtitle {
         margin: 0;
+        font-size: 13px;
+        color: var(--muted);
+        font-weight: 400;
+        line-height: 1.4;
       }
       .meta {
         display: flex;
         flex-wrap: wrap;
-        gap: 8px 20px;
-        color: var(--muted);
+        gap: 8px;
+        margin-top: 8px;
+      }
+      .meta span {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 10px;
+        border-radius: 999px;
         font-size: 12px;
+        color: var(--muted);
+        background: var(--surface);
+        border: 1px solid var(--border);
       }
       .meta strong {
         color: var(--fg);
-        font-weight: 500;
+        font-weight: 550;
       }
-      .row {
+      .toolbar {
         display: flex;
         flex-wrap: wrap;
         gap: 8px;
         align-items: center;
+        padding: 4px 0 2px;
+      }
+      .progress-wrap {
+        display: none;
+        flex-direction: column;
+        gap: 6px;
+        padding: 10px 12px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+      }
+      .progress-wrap.is-visible {
+        display: flex;
+      }
+      .progress-wrap label {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      progress {
+        width: 100%;
+        height: 8px;
+        border-radius: 4px;
+        overflow: hidden;
+        border: none;
+        background: var(--log-bg);
+      }
+      progress::-webkit-progress-bar {
+        background: var(--log-bg);
+        border-radius: 4px;
+      }
+      progress::-webkit-progress-value {
+        background: var(--accent);
+        border-radius: 4px;
+      }
+      progress::-moz-progress-bar {
+        background: var(--accent);
+        border-radius: 4px;
+      }
+      .progress-meta {
+        font-size: 11px;
+        font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
+        color: #a8b4c2;
       }
       button {
         background: #1e2a3a;
@@ -85,7 +153,11 @@
         opacity: 0.45;
         cursor: not-allowed;
       }
-      #log {
+      button:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+      #log.log-panel {
         flex: 1;
         min-height: 220px;
         margin: 0;
@@ -100,6 +172,7 @@
         word-break: break-word;
         overflow-y: auto;
         color: #c8d4e0;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
       }
       .line--error {
         color: var(--err);
@@ -114,7 +187,7 @@
         border: 1px solid var(--border);
         border-radius: 8px;
         padding: 10px 12px;
-        background: #121820;
+        background: var(--details-bg);
         font-size: 12px;
         color: var(--muted);
         line-height: 1.5;
@@ -134,22 +207,96 @@
         margin: 8px 0 0 0;
         padding-left: 1.2em;
       }
+      details li + li {
+        margin-top: 6px;
+      }
+      details code {
+        font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
+        font-size: 0.92em;
+        padding: 2px 6px;
+        border-radius: 4px;
+        background: var(--log-bg);
+        border: 1px solid var(--border);
+        color: #d1dae6;
+      }
+      @media (prefers-color-scheme: light) {
+        :root {
+          color-scheme: light;
+          --bg: #e8ecf1;
+          --fg: #12161c;
+          --muted: #4a5568;
+          --accent: #d9ed58;
+          --accent-fg: #0f1419;
+          --accent-hover: #c5dc44;
+          --err: #dc2626;
+          --ok: #5a6b0a;
+          --border: #c5cdd8;
+          --surface: #ffffff;
+          --log-bg: #dfe5ed;
+          --details-bg: #f4f7fb;
+        }
+        body {
+          background: var(--bg);
+        }
+        button {
+          background: #eef1f6;
+          color: var(--fg);
+          border-color: var(--border);
+        }
+        button:hover:not(:disabled) {
+          background: #e2e8f0;
+          border-color: var(--accent);
+        }
+        #log.log-panel {
+          color: #2d3748;
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+        }
+        .progress-meta {
+          color: #4a5568;
+        }
+        .line--warn {
+          color: #b45309;
+        }
+        details code {
+          color: #1a202c;
+        }
+      }
     </style>
   </head>
   <body>
-    <h1>Updates en diagnose</h1>
-    <p class="meta" id="meta"></p>
-    <div class="row">
+    <header class="page-header">
+      <h1>Updates en diagnose</h1>
+      <p class="subtitle">Status van GitHub-updates, log en veelvoorkomende oorzaken.</p>
+      <p class="meta" id="meta"></p>
+    </header>
+
+    <div class="toolbar">
       <button type="button" id="btnCheck" class="primary">Zoek nu naar updates</button>
-      <button type="button" id="btnCopy">Kopieer volledige log</button>
+      <button type="button" id="btnCopy">Kopieer log</button>
+      <button type="button" id="btnClear">Log wissen</button>
       <button type="button" id="btnInstall" hidden class="primary">Installeer en herstart</button>
     </div>
-    <pre id="log" aria-label="Statuslog"></pre>
+
+    <div id="progressWrap" class="progress-wrap" aria-hidden="true">
+      <label id="progressLabel" for="progressBar">Download</label>
+      <progress id="progressBar" max="100" value="0"></progress>
+      <span id="progressMeta" class="progress-meta"></span>
+    </div>
+
+    <div
+      id="log"
+      class="log-panel"
+      role="log"
+      aria-live="polite"
+      aria-relevant="additions"
+      aria-label="Statuslog"
+    ></div>
     <details>
       <summary>Waarom faalt updaten soms?</summary>
       <ul>
         <li><strong>Alleen de geïnstalleerde app</strong> (niet <code>npm start</code>) kan echt op GitHub controleren.</li>
         <li>De <strong>GitHub-repository</strong> (of in elk geval de releases) moeten <strong>openbaar</strong> leesbaar zijn zonder inlog, tenzij je zelf auth regelt.</li>
+        <li>Als je <strong>404</strong> op <code>latest.yml</code> ziet (code <code>ERR_UPDATER_CHANNEL_FILE_NOT_FOUND</code>): die file komt van de <strong>Windows</strong>-CI-job. De release is dan onvolledig — controleer <strong>Actions</strong>, herstart de Windows-job of upload handmatig <code>latest.yml</code> van een lokale <code>npm run dist:win</code>. Zonder <code>latest.yml</code> werken auto-updates op Windows niet.</li>
         <li>Op de <strong>nieuwste release</strong> moeten o.a. <code>latest.yml</code> (Windows) of <code>latest-mac.yml</code> (Mac) als <strong>bestand bij de release</strong> staan, naast de installer/zip.</li>
         <li>Een release die alleen als <strong>pre-release</strong> is gemarkeerd, wordt soms overgeslagen; gebruik geen pre-release tenzij je weet dat je die nodig hebt.</li>
         <li>Op je pc moet de <strong>geïnstalleerde versie lager</strong> zijn dan de release (semver); anders: “geen update”.</li>
