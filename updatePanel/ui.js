@@ -44,7 +44,7 @@ function handleAppend(payload) {
       lastDownloadedInfo = data;
       $btnInstall.hidden = true;
       appendLine(
-        `[${time}] Update ${v} is binnen. De app start zo automatisch opnieuw (installer).`,
+        `[${time}] Update ${v} is binnen. Over ~3s sluit de app (titelbalk · melding) — sla werk op.`,
         "line--ok",
       );
       return;

@@ -12,6 +12,7 @@ const {
   nativeImage,
   ipcMain,
   clipboard,
+  Notification,
 } = require("electron");
 const { autoUpdater } = require("electron-updater");
 
@@ -93,6 +94,71 @@ function setMainWindowLoadingState(win, active) {
   } catch {
     /* */
   }
+}
+
+/** Titels van alle app-vensters (hoofd + updatepaneel + pop-ups). */
+function setAllBrowserWindowsTitle(title) {
+  for (const w of BrowserWindow.getAllWindows()) {
+    if (w.isDestroyed()) {
+      continue;
+    }
+    try {
+      w.setTitle(title);
+    } catch {
+      /* */
+    }
+  }
+}
+
+function showUpdateWillRestartNotice(versionLabel, totalSeconds) {
+  const v = versionLabel ? ` (${versionLabel})` : "";
+  const body = `Webleaders PM sluit over ongeveer ${totalSeconds} seconden om te updaten${v}. Sla je werk op op de website.`;
+  if (Notification.isSupported()) {
+    try {
+      const n = new Notification({
+        title: "Update wordt geïnstalleerd",
+        body,
+        icon: getAppIconPath(),
+      });
+      n.show();
+    } catch (e) {
+      console.warn("[update] notificatie tonen mislukt:", e);
+    }
+  }
+}
+
+function startUpdateRestartCountdownAndQuit(version, totalSeconds) {
+  const verShort = version ? String(version) : "";
+  const suffix = verShort ? ` · v${verShort}` : "";
+
+  const updateTitles = (remaining) => {
+    setAllBrowserWindowsTitle(`${app.getName()} — herstart over ${remaining}s${suffix}`);
+  };
+
+  showUpdateWillRestartNotice(verShort ? `v${verShort}` : "", totalSeconds);
+  updateTitles(totalSeconds);
+
+  let elapsed = 0;
+  const interval = setInterval(() => {
+    elapsed += 1;
+    const left = totalSeconds - elapsed;
+    if (left <= 0) {
+      clearInterval(interval);
+      return;
+    }
+    updateTitles(left);
+  }, 1000);
+
+  setTimeout(() => {
+    clearInterval(interval);
+    try {
+      setAllBrowserWindowsTitle(app.getName());
+      autoUpdater.quitAndInstall(true, true);
+    } catch (e) {
+      console.error("[update] quitAndInstall na download:", e);
+      setAllBrowserWindowsTitle(app.getName());
+    }
+  }, totalSeconds * 1000);
 }
 
 function getWindowStateFilePath() {
@@ -647,16 +713,9 @@ function setupAutoUpdater() {
     pushUpdateEvent("update-downloaded", info);
     pushUpdateEvent("log", {
       level: "info",
-      m: "Update is binnen. De app stopt zo en start de installer (stille modus op Windows waar mogelijk).",
+      m: "Update is binnen. Over enkele seconden sluit de app voor de installatie (zie titelbalk of melding).",
     });
-    const delayMs = 1500;
-    setTimeout(() => {
-      try {
-        autoUpdater.quitAndInstall(true, true);
-      } catch (e) {
-        console.error("[update] quitAndInstall na download:", e);
-      }
-    }, delayMs);
+    startUpdateRestartCountdownAndQuit(info?.version, 3);
   });
 
   // Na start even wachten (netwerk / sessie), dan op achtergrond controleren

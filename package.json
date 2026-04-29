@@ -1,6 +1,6 @@
 {
   "name": "pm-webleaders-app",
-  "version": "1.0.12",
+  "version": "1.0.13",
   "description": "Desktop app die pm.webleaders.nl toont in Electron",
   "license": "ISC",
   "author": "",

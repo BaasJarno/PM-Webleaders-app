@@ -89,16 +89,45 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $tag = $env:GITHUB_REF_NAME
-          $items = @(
-            Get-ChildItem -Path release -Filter *.exe -File
-            Get-ChildItem -Path release -Filter *.blockmap -File
-            Get-ChildItem -Path release -Filter *.yml -File
-          )
-          if ($items.Count -eq 0) {
-            Get-ChildItem release | ForEach-Object { Write-Host "release:" $_.Name }
-            throw "Geen .exe, .blockmap of .yml in release/"
+          if (-not (Test-Path "release")) { throw "Map release/ ontbreekt na build" }
+          Get-ChildItem "release" | ForEach-Object { Write-Host "release:" $_.Name }
+          $exe = @(Get-ChildItem "release\*.exe" -File -ErrorAction SilentlyContinue)
+          $map = @(Get-ChildItem "release\*.blockmap" -File -ErrorAction SilentlyContinue)
+          $yml = @(Get-ChildItem "release\*.yml" -File -ErrorAction SilentlyContinue)
+          $items = @($exe) + @($map) + @($yml)
+          if ($items.Count -eq 0) { throw "Geen .exe, .blockmap of .yml in release/" }
+          $hasLatest = $items | Where-Object { $_.Name -eq "latest.yml" }
+          if (-not $hasLatest) {
+            throw "latest.yml ontbreekt: electron-updater op Windows heeft dit bestand nodig. Controleer dist:win / NSIS-output."
           }
           foreach ($f in $items) {
             Write-Host "Upload: $($f.Name)"
             gh release upload $tag $f.FullName --clobber
           }
+
+  # Voorkomt “half” uitgebrachte tags: Windows levert latest.yml, macOS latest-mac.yml.
+  verify-updater-metadata:
+    needs: [build-macos, build-windows]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Controleren dat updater-yml op de release staat
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          REPO="${{ github.repository }}"
+          base="https://github.com/${REPO}/releases/download/${TAG}"
+          ok=true
+          for name in latest.yml latest-mac.yml; do
+            url="${base}/${name}"
+            code="$(curl -sS -L -o /dev/null -w "%{http_code}" "$url")"
+            echo "${url} -> HTTP ${code}"
+            if [ "${code}" != "200" ]; then
+              echo "::error::${name} ontbreekt of is niet publiek (HTTP ${code}). Controleer of de Windows- en macOS-build zijn geslaagd en alle bestanden zijn geüpload."
+              ok=false
+            fi
+          done
+          if [ "$ok" != "true" ]; then
+            exit 1
+          fi
