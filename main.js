@@ -10,7 +10,6 @@ const {
   Menu,
   globalShortcut,
   nativeImage,
-  dialog,
   ipcMain,
   clipboard,
 } = require("electron");
@@ -583,26 +582,18 @@ function setupAutoUpdater() {
 
   autoUpdater.on("update-downloaded", (info) => {
     pushUpdateEvent("update-downloaded", info);
-    const showSystemDialog = !updatePanelReady;
-    if (!showSystemDialog) {
-      return;
-    }
-    const parent = getDialogParent();
-    const ver = info && info.version ? info.version : "?";
-    void dialog
-      .showMessageBox(parent, {
-        type: "info",
-        title: "Update klaar",
-        message: `Versie ${ver} is binnen. Wil je de app herstarten om te installeren?`,
-        buttons: ["Later", "Herstarten"],
-        defaultId: 1,
-        cancelId: 0,
-      })
-      .then((r) => {
-        if (r.response === 1) {
-          autoUpdater.quitAndInstall(true, true);
-        }
-      });
+    pushUpdateEvent("log", {
+      level: "info",
+      m: "Update is binnen. De app stopt zo en start de installer (stille modus op Windows waar mogelijk).",
+    });
+    const delayMs = 1500;
+    setTimeout(() => {
+      try {
+        autoUpdater.quitAndInstall(true, true);
+      } catch (e) {
+        console.error("[update] quitAndInstall na download:", e);
+      }
+    }, delayMs);
   });
 
   // Na start even wachten (netwerk / sessie), dan op achtergrond controleren

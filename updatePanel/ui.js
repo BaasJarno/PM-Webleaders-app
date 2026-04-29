@@ -42,10 +42,9 @@ function handleAppend(payload) {
     case "update-downloaded": {
       const v = data?.version ?? "?";
       lastDownloadedInfo = data;
-      $btnInstall.hidden = false;
-      $btnInstall.disabled = false;
+      $btnInstall.hidden = true;
       appendLine(
-        `[${time}] Update ${v} is binnen. Klik op “Installeer en herstart” of herstart de app later.`,
+        `[${time}] Update ${v} is binnen. De app start zo automatisch opnieuw (installer).`,
         "line--ok",
       );
       return;
